@@ -1,4 +1,3 @@
-import { Environment } from "@graphcms/uix-react-sdk";
 import {
   GraphQLObjectType,
   GraphQLOutputType,
@@ -11,6 +10,7 @@ import {
   buildClientSchema,
   GraphQLAbstractType,
   GraphQLInterfaceType,
+  GraphQLSchema,
 } from "graphql";
 import { createExecutor, IQueryExecutor } from "./executor";
 
@@ -24,6 +24,7 @@ const fieldsToIgnore = new Set([
 ]);
 
 export interface Explorer {
+  schema: GraphQLSchema;
   possibleTypes: Map<string, GraphQLObjectType<any, any>>;
   exploredTypes: ReadonlySet<string>;
   usedStages: Set<string>;
@@ -57,13 +58,33 @@ function camelize(str: string) {
   });
 }
 
-function exploreType(
-  { exploredTypes, ...rest }: Explorer,
-  type: GraphQLObjectType
-) {
-  if (exploredTypes.has(type.name)) return;
+function getTypeInformation(explorer: Explorer, typeName: string) {
+  const possibleDetails = explorer.possibleTypes.get(typeName);
+  if (possibleDetails) return possibleDetails;
 
-  const typeDetails = rest.possibleTypes.get(type.name);
+  if (typeName.endsWith("RichText")) {
+    const detail = explorer.schema.getType(typeName);
+    if (isObjectType(detail)) return detail;
+  }
+}
+
+function shouldExplore(explorer: Explorer, type: GraphQLObjectType) {
+  if (explorer.possibleTypes.has(type.name)) return true;
+  if (type.name.endsWith("RichText")) {
+    if (explorer.schema.getType(type.name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function exploreType(explorer: Explorer, type: GraphQLObjectType) {
+  const { exploredTypes, ...rest } = explorer;
+  if (exploredTypes.has(type.name)) {
+    return;
+  }
+
+  const typeDetails = getTypeInformation(explorer, type.name);
   if (!typeDetails) {
     return;
   }
@@ -118,12 +139,14 @@ function walkType(
     return;
   }
   if (isObjectType(type)) {
-    if (!explorer.possibleTypes.has(type.name)) {
+    if (!shouldExplore(explorer, type)) {
       // console.log("cannot find", name);
     } else {
       if (showName) explorer.query.push(`${spaces}  ${name} {`);
       explorer.usedStages.add(type.name);
-      explorer.query.push(`${spaces}    ...${type.name}Stages`);
+      if (explorer.possibleTypes.has(type.name)) {
+        explorer.query.push(`${spaces}    ...${type.name}Stages`);
+      }
       exploreType(nextLevel(explorer), type);
       if (showName) explorer.query.push(`${spaces}  }`);
     }
@@ -132,8 +155,12 @@ function walkType(
   return;
 }
 
-export async function explore(environment: Environment, name: string) {
-  const execute = createExecutor(environment.endpoint, environment.authToken);
+export async function explore(
+  endpoint: string,
+  authToken: string,
+  name: string
+) {
+  const execute = createExecutor(endpoint, authToken);
   const introspectionResult = await execute({
     query: getIntrospectionQuery(),
     operationName: "IntrospectionQuery",
@@ -166,7 +193,7 @@ export async function explore(environment: Environment, name: string) {
       `fragment ${possibleType.name}Stages on ${possibleType.name} {
     id      
     stage
-    ${title ? `__title: ${title}` : "__title: id"}
+    ${title ? `__title: ${title}` : ""}
     __typename
     documentInStages(includeCurrent: true) {
       stage
@@ -185,6 +212,7 @@ export async function explore(environment: Environment, name: string) {
   exploredTypes.delete(name);
   const plural = pluralRootFieldName(possibleType) || name;
   const explorer: Explorer = {
+    schema,
     possibleTypes: possibleTypesMap,
     usedStages: new Set<string>(),
     exploredTypes,
@@ -202,7 +230,7 @@ export async function explore(environment: Environment, name: string) {
   explorer.query.push(`}`);
 
   const finalQuery = `query Check${name}($id: ID) {
-  ${camel}(where: {id: $id}) {
+  ${camel}(where: {id: $id}, stage: DRAFT) {
     ...${name}Checker
   }
 }`;
@@ -210,9 +238,10 @@ export async function explore(environment: Environment, name: string) {
   explorer.usedStages.forEach((used) => {
     const frag = fragments.get(used);
     if (!frag) {
-      throw new Error(`No fragment for ${used}`);
+      // console.log(`No fragment for ${used}`);
+    } else {
+      explorer.query.push(frag);
     }
-    explorer.query.push(frag);
   });
   explorer.query.push(finalQuery);
   return explorer;

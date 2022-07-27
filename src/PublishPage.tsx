@@ -119,7 +119,9 @@ const PublishPage: React.FC = () => {
 
   useEffect(() => {
     console.log("exploring...");
-    explore(environment, apiId).then(setExplorer).catch(setError);
+    explore(environment.endpoint, environment.authToken, apiId)
+      .then(setExplorer)
+      .catch(setError);
   }, [environment, apiId]);
 
   useEffect(() => {

@@ -13,9 +13,9 @@ export interface OutOfDateInformation {
 interface StageInformation {
   id: string;
   stage: string;
-  __title: string;
+  __title?: string;
   __typename: string;
-  documentInStages: {
+  documentInStages?: {
     stage: string;
     publishedAt: string | null;
     updatedAt: string;
@@ -35,20 +35,21 @@ function isOutOfDate(
   information: StageInformation,
   path: string
 ): OutOfDateInformation | undefined {
-  const published = information.documentInStages.find(
-    (d) => d.stage === "PUBLISHED"
-  );
+  const { documentInStages } = information;
+  if (!documentInStages) {
+    return;
+  }
+
+  const draft = documentInStages.find((d) => d.stage === "DRAFT");
+  if (!draft) {
+    return;
+  }
+  const published = documentInStages.find((d) => d.stage === "PUBLISHED");
   const buildResult = () => {
-    const draft = information.documentInStages.find(
-      (i) => i.stage === "DRAFT"
-    )!;
-    const published = information.documentInStages.find(
-      (i) => i.stage === "PUBLISHED"
-    );
     return {
       id: information.id,
       stage: information.stage,
-      __title: information.__title,
+      __title: information.__title || information.id,
       __typename: information.__typename,
       lastUpdated: draft.updatedAt,
       lastPublished: published?.publishedAt || undefined,
@@ -58,7 +59,6 @@ function isOutOfDate(
   if (!published) {
     return buildResult();
   }
-  const draft = information.documentInStages.find((d) => d.stage === "DRAFT");
   if (draft?.updatedAt !== published.updatedAt) {
     return buildResult();
   }
@@ -113,7 +113,6 @@ export async function examineResults(explorer: Explorer, id: string) {
     const entry = data?.[explorer.camel] as any;
     const outOfDate: OutOfDateInformation[] = [];
     isEntryOutOfDate("", entry, outOfDate);
-    console.log("out of date", outOfDate);
     if (outOfDate.length > 0) {
       return outOfDate;
     }

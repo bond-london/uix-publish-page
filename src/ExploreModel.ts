@@ -78,7 +78,11 @@ function shouldExplore(explorer: Explorer, type: GraphQLObjectType) {
   return false;
 }
 
-function exploreType(explorer: Explorer, type: GraphQLObjectType) {
+function exploreType(
+  explorer: Explorer,
+  type: GraphQLObjectType,
+  ignoredFields?: Set<string>
+) {
   const { exploredTypes, ...rest } = explorer;
   if (exploredTypes.has(type.name)) {
     return;
@@ -96,7 +100,11 @@ function exploreType(explorer: Explorer, type: GraphQLObjectType) {
   };
   const fields = typeDetails.getFields();
   for (const fieldName in fields) {
-    if (fieldsToIgnore.has(fieldName) || fieldName.startsWith("related")) {
+    if (
+      ignoredFields?.has(fieldName) ||
+      fieldsToIgnore.has(fieldName) ||
+      fieldName.startsWith("related")
+    ) {
       continue;
     }
 
@@ -158,7 +166,8 @@ function walkType(
 export async function explore(
   endpoint: string,
   authToken: string,
-  name: string
+  name: string,
+  ignoredFields?: Set<string>
 ) {
   const execute = createExecutor(endpoint, authToken);
   const introspectionResult = await execute({
@@ -226,7 +235,7 @@ export async function explore(
   explorer.usedStages.add(name);
   explorer.query.push(`fragment ${name}Checker on ${name} {
     ...${name}Stages`);
-  exploreType(explorer, possibleType);
+  exploreType(explorer, possibleType, ignoredFields);
   explorer.query.push(`}`);
 
   const finalQuery = `query Check${name}($id: ID) {

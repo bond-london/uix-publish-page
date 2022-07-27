@@ -77,6 +77,24 @@ const OutOfDateStatus: React.FC<{ outOfDate: OutOfDateInformation[] }> = ({
   );
 };
 
+interface BasicField {
+  __typename: string;
+  apiId: string;
+  isSystem: boolean;
+  visibility: "READ_WRITE" | "READ_ONLY" | "HIDDEN" | "API_ONLY";
+}
+
+function buildIgnoredFields(fields: BasicField[]) {
+  const ignored = new Set<string>();
+  fields.forEach((f) => {
+    if (f.isSystem || f.visibility !== "READ_WRITE") {
+      ignored.add(f.apiId);
+    }
+  });
+  console.log("ignored", ignored);
+  return ignored;
+}
+
 const PublishPage: React.FC = () => {
   const ext = useFormSidebarExtension();
   const {
@@ -85,6 +103,14 @@ const PublishPage: React.FC = () => {
     entry,
     form: { subscribeToFormState },
   } = ext;
+
+  const fields = (ext as unknown as { model: { fields: BasicField[] } })?.model
+    ?.fields;
+
+  useEffect(() => {
+    console.log(ext);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [explorer, setExplorer] = useState<Explorer>();
   const [error, setError] = useState<any>();
@@ -119,10 +145,11 @@ const PublishPage: React.FC = () => {
 
   useEffect(() => {
     console.log("exploring...");
-    explore(environment.endpoint, environment.authToken, apiId)
+    const ignoredFields = buildIgnoredFields(fields);
+    explore(environment.endpoint, environment.authToken, apiId, ignoredFields)
       .then(setExplorer)
       .catch(setError);
-  }, [environment, apiId]);
+  }, [environment, apiId, fields]);
 
   useEffect(() => {
     if (explorer && entry?.id && readyToShow) {

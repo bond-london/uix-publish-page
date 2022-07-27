@@ -1,4 +1,4 @@
-import { Context, Model } from "@graphcms/uix-react-sdk";
+import { Environment } from "@graphcms/uix-react-sdk";
 import {
   GraphQLObjectType,
   GraphQLOutputType,
@@ -132,11 +132,8 @@ function walkType(
   return;
 }
 
-export async function explore(context: Context, model: Model) {
-  const execute = createExecutor(
-    context.environment.endpoint,
-    context.environment.authToken
-  );
+export async function explore(environment: Environment, name: string) {
+  const execute = createExecutor(environment.endpoint, environment.authToken);
   const introspectionResult = await execute({
     query: getIntrospectionQuery(),
     operationName: "IntrospectionQuery",
@@ -179,8 +176,6 @@ export async function explore(context: Context, model: Model) {
   }`
     );
   }
-
-  const name = model.apiId;
 
   const possibleType = possibleTypesMap.get(name);
   if (!possibleType) return;
